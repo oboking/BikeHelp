@@ -15,6 +15,9 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
+import android.view.View;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -22,6 +25,7 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
@@ -38,12 +42,14 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
+import java.util.LinkedList;
+import java.util.List;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, ActivityCompat.OnRequestPermissionsResultCallback {
+public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, ActivityCompat.OnRequestPermissionsResultCallback, LocationListener  {
 
     private GoogleMap mMap;
 
@@ -52,8 +58,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     LatLng latLng;
     SupportMapFragment mFragment;
     Marker currLocationMarker;
-
+    LocationManager locManager;
     private static final int REQUEST_LOCATION = 2;
+    private double currentLat;
+    private double currentLong;
+    private List<ParkingArea> currentParkingAreas = new LinkedList<ParkingArea>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,6 +89,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         mMap = googleMap;
 
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
             mMap.setMyLocationEnabled(true);
@@ -90,16 +100,48 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     REQUEST_LOCATION);
         }
 
+        // Use the location manager through GPS
+        locManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        locManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, this);
+
+        //get the current location (last known location) from the location manager
+        Location location = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+
+        //if location found display as a toast the current latitude and longitude
+        if (location != null) {
+            currentLat = location.getLatitude();
+            currentLong = location.getLongitude();
+        } else {
+            Toast.makeText(this, "Cannot fetch current location!",
+                    Toast.LENGTH_SHORT).show();
+        }
+
+        System.out.println("location was: Lat: " + currentLat + ", Long: " + currentLong);
+        //when the current location is found – stop listening for updates (preserves battery)
+        locManager.removeUpdates(this);
+
+        mMap.getUiSettings().setMapToolbarEnabled(false);
+        mMap.setInfoWindowAdapter(new MyInfoWindowAdapter());
+
         getStations();
 
-        // Add a marker in Sydney and move the camera
-        LatLng sydney = new LatLng(-34, 151);
-        mMap.addMarker(new MarkerOptions().position(sydney).title("Marker in Sydney"));
-        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney));
-
-        mMap.();
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(currentLat,currentLong),15));
 
     }
+
+    public static double getDistanceFromLatLonInKm(double lat1, double lng1, double lat2, double lng2) {
+        double earthRadius = 6371000; //meters
+        double dLat = Math.toRadians(lat2-lat1);
+        double dLng = Math.toRadians(lng2-lng1);
+        double a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                        Math.sin(dLng/2) * Math.sin(dLng/2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        double dist = (float) (earthRadius * c);
+
+        return dist;
+    }
+
 
     public void getStations() {
 
@@ -111,7 +153,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             StrictMode.setThreadPolicy(policy);
 
 
-            String uri = "http://data.goteborg.se/ParkingService/v2.1/BikeParkings/{1b6ba419-fdc5-4101-a241-91a83ef7610d}?latitude={57.708870}&longitude={11.974560}&radius={5000}&format={XML}";
+            String uri = "http://data.goteborg.se/ParkingService/v2.1/BikeParkings/{1b6ba419-fdc5-4101-a241-91a83ef7610d}?latitude={"+currentLat+"}&longitude={"+currentLong+"}&radius={10}&format={XML}";
             URL url = null;
 
             try {
@@ -137,15 +179,24 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
                     if (currentNode.getNodeType() == Node.ELEMENT_NODE) {
                         Element eElement = (Element) currentNode;
-                        System.out.println("parking spot: " + eElement.getAttribute("id"));
-                        //System.out.println("Staff id : " + eElement.getAttribute("id"));
 
-                        //mMap.addMarker(new MarkerOptions().position(new LatLng(Double.parseDouble(eElement.getAttribute("Lat")), Double.parseDouble(eElement.getAttribute("Long")))).title("Marker in Sydney"));
-                    /*System.out.println("First Name : " + eElement.getElementsByTagName("firstname").item(0).getTextContent());
-                    System.out.println("Last Name : " + eElement.getElementsByTagName("lastname").item(0).getTextContent());
-                    System.out.println("Nick Name : " + eElement.getElementsByTagName("nickname").item(0).getTextContent());
-                    System.out.println("Salary : " + eElement.getElementsByTagName("salary").item(0).getTextContent());*/
 
+                        Double latitude = Double.parseDouble(eElement.getElementsByTagName("Lat").item(0).getTextContent());
+                        Double longitute = Double.parseDouble(eElement.getElementsByTagName("Long").item(0).getTextContent());
+                        System.out.println("distance between node and user: " + getDistanceFromLatLonInKm(currentLat,currentLong,latitude,longitute));
+
+                        if(getDistanceFromLatLonInKm(currentLat,currentLong,latitude,longitute)<1200){
+                            String id = eElement.getElementsByTagName("Id").item(0).getTextContent();
+                            int parkingSpaces = Integer.parseInt(eElement.getElementsByTagName("Spaces").item(0).getTextContent());
+                            String address = eElement.getElementsByTagName("Address").item(0).getTextContent();
+                            System.out.println("Adding parking area: " + id);
+
+                            currentParkingAreas.add(new ParkingArea(id,latitude,longitute,parkingSpaces,address));
+
+                            MarkerOptions marker = new MarkerOptions().position(new LatLng(latitude, longitute)).title(id);
+                            marker.icon(BitmapDescriptorFactory.fromResource(R.drawable.bike_icon_smaller));
+                            mMap.addMarker(marker);
+                        }
                     }
                 }
             } catch (ProtocolException e) {
@@ -193,5 +244,66 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 // Permission was denied or request was cancelled
             }
         }
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+
+    }
+
+    @Override
+    public void onStatusChanged(String provider, int status, Bundle extras) {
+
+    }
+
+    @Override
+    public void onProviderEnabled(String provider) {
+
+    }
+
+    @Override
+    public void onProviderDisabled(String provider) {
+
+    }
+
+    private class MyInfoWindowAdapter implements GoogleMap.InfoWindowAdapter {
+
+        private final View myContentsView;
+
+        MyInfoWindowAdapter(){
+            myContentsView = getLayoutInflater().inflate(R.layout.custom_info_window, null);
+        }
+
+        @Override
+        public View getInfoContents(Marker marker) {
+
+            ParkingArea area = getAreaFromId(marker.getTitle());
+
+            TextView infoWindowName = ((TextView)myContentsView.findViewById(R.id.infoWindowName));
+            infoWindowName.setText(area.getAddress());
+            TextView infoWindowSpaces = ((TextView)myContentsView.findViewById(R.id.infoWindowSpaces));
+            infoWindowSpaces.setText("Antal platser: " + area.getParkingSpaces());
+
+            return myContentsView;
+        }
+
+
+        @Override
+        public View getInfoWindow(Marker marker) {
+            // TODO Auto-generated method stub
+            return null;
+        }
+
+    }
+
+    public ParkingArea getAreaFromId(String id){
+        System.out.println("inside getareafrommarker");
+        for(ParkingArea area : currentParkingAreas) {
+            System.out.println("checking if area.getId() (" + area.getId()+") is equal to marker title (id) ("+id+")");
+            if (area.getId().equals(id)){
+                return area;
+            }
+        }
+        return new ParkingArea("",-1,-1,0,"");
     }
 }
