@@ -1,4 +1,4 @@
-package com.oscarboking.punka;
+package com.oscarboking.bikehelp;
 
 /**
  * Created by boking on 2017-09-10.

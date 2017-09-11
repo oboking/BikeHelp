@@ -4,7 +4,7 @@
 
     To get one, follow this link, follow the directions and press "Create" at the end:
 
-    https://console.developers.google.com/flows/enableapi?apiid=maps_android_backend&keyType=CLIENT_SIDE_ANDROID&r=37:6A:90:1B:86:94:0B:4F:EF:CA:A7:33:1B:22:C7:19:45:11:19:FA%3Bcom.oscarboking.punka
+    https://console.developers.google.com/flows/enableapi?apiid=maps_android_backend&keyType=CLIENT_SIDE_ANDROID&r=37:6A:90:1B:86:94:0B:4F:EF:CA:A7:33:1B:22:C7:19:45:11:19:FA%3Bcom.oscarboking.bikehelp
 
     You can also add your credentials to an existing key, using this line:
     37:6A:90:1B:86:94:0B:4F:EF:CA:A7:33:1B:22:C7:19:45:11:19:FA;com.oscarboking.punka
@@ -16,6 +16,7 @@
     string in this file.
     //laptop:AIzaSyA-__5mMf1Ille_sS7XBvUog__tZSuBrr8
     //comp:AIzaSyCPWjbr7qxY-f_FFTZ9Q_5RXpPWokFZxmk
+    //new package name laptop fingerprint: AIzaSyAzKPX6vSLG3-XEk9184K41wOL5ZazDZmY
     -->
-    <string name="google_maps_key" templateMergeStrategy="preserve" translatable="false">AIzaSyA-__5mMf1Ille_sS7XBvUog__tZSuBrr8</string>
+    <string name="google_maps_key" templateMergeStrategy="preserve" translatable="false">AIzaSyAzKPX6vSLG3-XEk9184K41wOL5ZazDZmY</string>
 </resources>

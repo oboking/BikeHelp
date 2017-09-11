@@ -1,13 +1,11 @@
-package com.oscarboking.punka;
+package com.oscarboking.bikehelp;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
-import android.os.Build;
 import android.os.StrictMode;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -16,11 +14,12 @@ import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
 import android.view.View;
+import android.widget.ImageButton;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -39,7 +38,6 @@ import org.xml.sax.SAXException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
 import java.util.LinkedList;
@@ -49,86 +47,95 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, ActivityCompat.OnRequestPermissionsResultCallback, LocationListener  {
+public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, ActivityCompat.OnRequestPermissionsResultCallback, LocationListener {
 
     private GoogleMap mMap;
 
-    GoogleApiClient mGoogleApiClient;
-
-    LatLng latLng;
-    SupportMapFragment mFragment;
-    Marker currLocationMarker;
-    LocationManager locManager;
+    LocationManager lockManager;
     private static final int REQUEST_LOCATION = 2;
     private double currentLat;
     private double currentLong;
     private List<ParkingArea> currentParkingAreas = new LinkedList<ParkingArea>();
+    private ImageButton refreshButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
-        // Obtain the SupportMapFragment and get notified when the map is ready to be used.
-        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
-                .findFragmentById(R.id.map);
+        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
+
+        refreshButton = (ImageButton) findViewById(R.id.refreshButton);
+        refreshButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                updateLocation();
+                currentParkingAreas.clear();
+                mMap.clear();
+                getStations();
+            }
+        });
+
         mapFragment.getMapAsync(this);
     }
 
 
-    /**
-     * Manipulates the map once available.
-     * This callback is triggered when the map is ready to be used.
-     * This is where we can add markers or lines, add listeners or move the camera. In this case,
-     * we just add a marker near Sydney, Australia.
-     * If Google Play services is not installed on the device, the user will be prompted to install
-     * it inside the SupportMapFragment. This method will only be triggered once the user has
-     * installed Google Play services and returned to the app.
-     */
+
+
     @Override
     public void onMapReady(GoogleMap googleMap) {
 
         mMap = googleMap;
 
+        GoogleApiClient googleApiClient = new GoogleApiClient.Builder(getApplicationContext()).addApi(LocationServices.API).build();
+        googleApiClient.connect();
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             mMap.setMyLocationEnabled(true);
         } else {
-            // Show rationale and request permission.
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                     REQUEST_LOCATION);
         }
 
-        // Use the location manager through GPS
-        locManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        locManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, this);
+        lockManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        lockManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, this);
 
-        //get the current location (last known location) from the location manager
-        Location location = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+        updateLocation();
 
-        //if location found display as a toast the current latitude and longitude
-        if (location != null) {
-            currentLat = location.getLatitude();
-            currentLong = location.getLongitude();
-        } else {
-            Toast.makeText(this, "Cannot fetch current location!",
-                    Toast.LENGTH_SHORT).show();
-        }
-
-        System.out.println("location was: Lat: " + currentLat + ", Long: " + currentLong);
         //when the current location is found – stop listening for updates (preserves battery)
-        locManager.removeUpdates(this);
+        lockManager.removeUpdates(this);
 
         mMap.getUiSettings().setMapToolbarEnabled(false);
         mMap.setInfoWindowAdapter(new MyInfoWindowAdapter());
 
         getStations();
 
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(currentLat,currentLong),15));
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(currentLat, currentLong), 15));
 
     }
 
+    public void updateLocation(){
+        Location location = null;
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            location = lockManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+        }
+
+        //if location found from gps use that, otherwise get it from passive provider
+        if (location != null) {
+            currentLat = location.getLatitude();
+            currentLong = location.getLongitude();
+        } else {
+            Location loc =  lockManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
+            if(loc!=null) {
+                currentLat = loc.getLatitude();
+                currentLong = loc.getLongitude();
+            }
+        }
+    }
+
+
+    //Since the RADIUS parameter for the HTTP-get request didn't seem to work,
+    //this method was used to compare the distance between two points
     public static double getDistanceFromLatLonInKm(double lat1, double lng1, double lat2, double lng2) {
         double earthRadius = 6371000; //meters
         double dLat = Math.toRadians(lat2-lat1);
@@ -142,9 +149,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         return dist;
     }
 
-
     public void getStations() {
-
         int SDK_INT = android.os.Build.VERSION.SDK_INT;
         if (SDK_INT > 8)
         {
@@ -152,9 +157,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     .permitAll().build();
             StrictMode.setThreadPolicy(policy);
 
-
             String uri = "http://data.goteborg.se/ParkingService/v2.1/BikeParkings/{1b6ba419-fdc5-4101-a241-91a83ef7610d}?latitude={"+currentLat+"}&longitude={"+currentLong+"}&radius={10}&format={XML}";
-            URL url = null;
+            URL url;
 
             try {
                 url = new URL(uri);
@@ -180,16 +184,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     if (currentNode.getNodeType() == Node.ELEMENT_NODE) {
                         Element eElement = (Element) currentNode;
 
-
                         Double latitude = Double.parseDouble(eElement.getElementsByTagName("Lat").item(0).getTextContent());
                         Double longitute = Double.parseDouble(eElement.getElementsByTagName("Long").item(0).getTextContent());
-                        System.out.println("distance between node and user: " + getDistanceFromLatLonInKm(currentLat,currentLong,latitude,longitute));
 
+                        //For now the radius is 1200m
                         if(getDistanceFromLatLonInKm(currentLat,currentLong,latitude,longitute)<1200){
                             String id = eElement.getElementsByTagName("Id").item(0).getTextContent();
                             int parkingSpaces = Integer.parseInt(eElement.getElementsByTagName("Spaces").item(0).getTextContent());
                             String address = eElement.getElementsByTagName("Address").item(0).getTextContent();
-                            System.out.println("Adding parking area: " + id);
 
                             currentParkingAreas.add(new ParkingArea(id,latitude,longitute,parkingSpaces,address));
 
@@ -209,7 +211,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 e.printStackTrace();
             }
         }
-
     }
 
 
@@ -290,16 +291,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         @Override
         public View getInfoWindow(Marker marker) {
-            // TODO Auto-generated method stub
             return null;
         }
 
     }
 
     public ParkingArea getAreaFromId(String id){
-        System.out.println("inside getareafrommarker");
         for(ParkingArea area : currentParkingAreas) {
-            System.out.println("checking if area.getId() (" + area.getId()+") is equal to marker title (id) ("+id+")");
             if (area.getId().equals(id)){
                 return area;
             }
